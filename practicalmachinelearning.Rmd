@@ -1,0 +1,125 @@
+---
+title: 'Practical Machine Learning - Assignment '
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+### Introduction
+
+This report deals with the analysis of the 'Weight Lifting Exercise Dataset' so as to predict the manner in which a group of enthusiasts did their exercises.
+
+The data for this analysis comes from this source: http://groupware.les.inf.puc-rio.br/har.  In this study, 6 participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. Accelerometers on the belt, forearm, arm, and dumbell of these participants were then read and recorded as in the data set.
+
+The objectives of this report are to show how I built a prediction model, how I used cross validation, what the expected out of sample error is, why I made the choice and how I use my prediction model to predict 20 different test cases. 
+
+### Building a prediction model
+
+To build a prediction model, first load both the training and testing data.
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+```{r}
+trainingData <- read.csv("./pml-training.csv", na.strings=c("#DIV/0!"))
+```
+
+```{r}
+testingData <- read.csv("./pml-testing.csv")
+```
+
+Then, format the columns from 8 to the end into numeric values.
+
+```{r}
+for(i in c(8:ncol(trainingData)-1)) {trainingData[,i] = as.numeric(as.character(trainingData[,i]))}
+
+for(i in c(8:ncol(testingData)-1)) {testingData[,i] = as.numeric(as.character(testingData[,i]))}
+
+```
+
+Thereafter, select the relevant data for building the model. These include omitting the NAs and removing user name, timestamps and windows.
+
+```{r}
+requiredFieldNames <- colnames(trainingData[colSums(is.na(trainingData)) == 0])[-(1:7)]
+modelData <- trainingData[requiredFieldNames]
+```
+
+Next, load the caret library for building the model and set seed to generate random numbers that ensure reproducibility.
+
+```{r}
+library(caret)
+set.seed(1234)
+```
+
+The prediction model is then built using cross validation.  In this approach, the model data set, obtained from training data set, is split into training and test data sets in the ratio of 3:1. The createDataPartion function of caret package in r is used as shown below.
+
+```{r}
+dataX <- createDataPartition(y=modelData$classe, p=3/4, list=FALSE )
+training <- modelData[dataX,]
+test <- modelData[-dataX,]
+```
+
+After the split, a prediction model is built with the training data set.  The prediction model is then evaluated on the test data set and the model is rebuilt. This processs is repeated over and over again till the best model with the variable as the best predictor is identified.  
+
+With the help of the packages - random forests, Hmisc, foreach, and doParellel in r, the best prediction model (modelP) is built as shown below.
+
+```{r}
+library(randomForest)
+library(Hmisc)
+library(foreach)
+library(doParallel)
+
+registerDoParallel()
+x <- training[-ncol(training)]
+y <- training$classe
+modelP <- foreach(ntree=rep(150, 4), .combine=randomForest::combine, .packages='randomForest') %dopar% {
+randomForest(x, y, ntree=ntree)
+}
+
+```
+
+The model can be evaluated as below by running predictions on the test data set and using the confusionmatrix function of the caret package in r to determine the expected out of sample error.    
+
+```{r}
+library(caret)
+
+predictions <- predict(modelP, newdata=test)
+confusionMatrix(predictions,test$classe)
+
+```
+
+The results indicate that the model provides an accuracy of 0.9955 with very good sensitivity and specificity values.  Thus, the model is indeed the best and the most efficient.
+
+### Conclusion
+
+Based on the above, modelP is therefore the best choice of model to be used for predictions of the 20 different test cases. 
+
+As such, this modelP is applied in the following codes to predict the 20 different test cases.
+
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+
+
+x <- testingData
+reqFieldNames <- colnames(testingData[colSums(is.na(testingData)) == 0])[-(1:7)]
+x <- testingData[reqFieldNames]
+
+answers <- predict(modelP, newdata=x)
+answers
+
+pml_write_files(answers)
+
+```
+
